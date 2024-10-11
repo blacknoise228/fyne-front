@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -14,27 +12,14 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-type loginUserRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-type userResponse struct {
-	Username          string    `json:"username"`
-	FullName          string    `json:"full_name"`
-	Email             string    `json:"email"`
-	PasswordChangedAt time.Time `json:"password_changed_at"`
-	CreatedAt         time.Time `json:"created_at"`
-}
-type loginUserResponse struct {
-	AccessToken string       `json:"access_token"`
-	User        userResponse `json:"user"`
-}
-
 var UserCabinet *loginUserResponse
 
-func FyneAuthUser(a fyne.App) {
+// FyneAuthUser creates a new Fyne window with a login form. If the user enters
+// a valid username and password, the window is closed and the AuthOkNext
+// function is called. Otherwise, an error dialog is shown.
+func (a *FyneApp) FyneAuthUser() {
 
-	w := a.NewWindow("Welcome")
+	w := a.Window
 
 	loginForm := widget.NewForm(
 		widget.NewFormItem("Username", widget.NewEntry()),
@@ -42,48 +27,57 @@ func FyneAuthUser(a fyne.App) {
 	)
 
 	loginForm.OnSubmit = func() {
-		if ok := SendAPIAuth(loginForm.Items[0].Widget.(*widget.Entry).Text,
+		if ok := sendAPIAuth(loginForm.Items[0].Widget.(*widget.Entry).Text,
 			loginForm.Items[1].Widget.(*widget.Entry).Text, w); ok {
-			AuthOkNext(w)
+			a.UserHomePage()
 		}
 	}
+	back := widget.NewButton("Back", func() {
+		a.WelcomePage()
+	})
 	content := container.NewVBox(
 		widget.NewLabel("Login"),
 		loginForm,
+		back,
 	)
 	w.SetContent(content)
-	w.Resize(fyne.NewSize(400, 400))
-	w.ShowAndRun()
+	w.Show()
 }
-func SendAPIAuth(login string, password string, w fyne.Window) bool {
-	user := loginUserRequest{Username: login, Password: password}
-	data, err := json.Marshal(user)
+
+// sendAPIAuth sends a POST request to the /users/login API endpoint with the
+// given username and password. If the request is successful, it unmarshals the
+// response body into UserCabinet and returns true. If the request fails, it
+// shows an error dialog and returns false.
+func sendAPIAuth(username string, password string, w fyne.Window) bool {
+	authRequest := loginUserRequest{
+		Username: username,
+		Password: password,
+	}
+	data, err := json.Marshal(authRequest)
 	if err != nil {
-		log.Println(err)
 		return false
 	}
 	req, err := http.NewRequest(http.MethodPost, URLS.LoginUserPOST, bytes.NewBuffer(data))
 	if err != nil {
-		log.Println(err)
 		return false
 	}
-	req.Header.Set("content-type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Println(err)
 		return false
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Println(err)
 		return false
 	}
-	json.Unmarshal(body, &UserCabinet)
-	log.Println("OK")
+	err = json.Unmarshal(body, &UserCabinet)
+	if err != nil {
+		return false
+	}
 	if resp.StatusCode != http.StatusOK {
-		dialog.ShowInformation("No Authorize", "Invalid password or username", w)
+		dialog.ShowInformation("Authentication Failed", "Invalid password or username", w)
 		return false
 	}
 	return true

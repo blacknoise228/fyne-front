@@ -7,6 +7,7 @@ import (
 )
 
 func main() {
-	app := app.New()
-	apisends.StartApp(app)
+	a := app.New()
+	app := apisends.NewFyneApp(a)
+	app.StartApp()
 }

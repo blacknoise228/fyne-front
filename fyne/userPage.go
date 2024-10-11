@@ -6,26 +6,21 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
-type Account struct {
-	ID        int64     `json:"id"`
-	Owner     string    `json:"owner"`
-	Balance   int64     `json:"balance"`
-	Currency  string    `json:"currency"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 var Accounts []Account
 
-// Next window after autorization is a accounts a user
-func AuthOkNext(w fyne.Window) {
-	listAccounts()
+// UserHomePage creates a new Fyne window with a scrollable list showing the
+// user's accounts. The list items show the account ID, currency, and balance.
+// The window also has a button at the bottom to create a new account and transaction.
+func (app *FyneApp) UserHomePage() {
+	w := app.Window
+	listAccounts(w)
 	list := widget.NewList(
 		func() int {
 			return len(Accounts)
@@ -45,17 +40,34 @@ func AuthOkNext(w fyne.Window) {
 				))
 		},
 	)
+	refresh := widget.NewButton("Refresh", func() {
+		app.UserHomePage()
+	})
+	createAccount := widget.NewButton("Create Account", func() {
+		app.CreateAccount()
+	})
+	createTransfer := widget.NewButton("Create Transaction", func() {
+		app.CreateTransaction()
+	})
 	scroll := container.NewVScroll(list)
 	scroll.SetMinSize(fyne.NewSize(400, 200))
 	content := container.NewVBox(
 		widget.NewLabel(fmt.Sprintf("User %v", UserCabinet.User.FullName)),
+		refresh,
 		scroll,
+		createTransfer,
+		createAccount,
 	)
 	w.SetContent(content)
 	w.Resize(fyne.NewSize(400, 400))
 	w.Show()
 }
-func listAccounts() {
+
+// listAccounts sends a GET request to the /accounts API endpoint with the
+// access token from the UserCabinet. If the request is successful, it
+// unmarshals the response body into the Accounts variable and logs a success
+// message. Otherwise, it logs an error message and shows an error dialog.
+func listAccounts(w fyne.Window) {
 	req, err := http.NewRequest(http.MethodGet, URLS.ListAccountGET, nil)
 	if err != nil {
 		log.Println(err)
@@ -68,7 +80,6 @@ func listAccounts() {
 		log.Println(err)
 		return
 	}
-	log.Println(req)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -79,6 +90,9 @@ func listAccounts() {
 	if err != nil {
 		log.Println(err)
 		return
+	}
+	if len(Accounts) == 0 {
+		dialog.ShowInformation("Error", "No accounts found", w)
 	}
 	log.Println("OK")
 }
